@@ -255,8 +255,10 @@ object ContainerPool {
   protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
+    val kind = action.exec.kind
+    val memory = action.limits.memory.megabytes.MB
     idles.find {
-      case (_, WarmedData(_, `invocationNamespace`, `action`, _)) => true
+      case (_, WarmedData(_, _, _, `kind`, `memory`, _)) => true
       case _                                                      => false
     }
   }

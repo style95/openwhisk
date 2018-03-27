@@ -56,6 +56,8 @@ case class PreWarmedData(container: Container, kind: String, memoryLimit: ByteSi
 case class WarmedData(container: Container,
                       invocationNamespace: EntityName,
                       action: ExecutableWhiskAction,
+                      kind: String,
+                      memoryLimit: ByteSize,
                       override val lastUsed: Instant)
     extends ContainerData(lastUsed)
 
@@ -161,7 +163,7 @@ class ContainerProxy(
         .flatMap { container =>
           // now attempt to inject the user code and run the action
           initializeAndRun(container, job)
-            .map(_ => WarmedData(container, job.msg.user.namespace, job.action, Instant.now))
+            .map(_ => WarmedData(container, job.msg.user.namespace, job.action,  job.action.exec.kind, job.action.limits.memory.megabytes.MB, Instant.now))
         }
         .pipeTo(self)
 
@@ -186,7 +188,7 @@ class ContainerProxy(
     case Event(job: Run, data: PreWarmedData) =>
       implicit val transid = job.msg.transid
       initializeAndRun(data.container, job)
-        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, Instant.now))
+        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, job.action.exec.kind, job.action.limits.memory.megabytes.MB, Instant.now))
         .pipeTo(self)
 
       goto(Running)
@@ -222,7 +224,7 @@ class ContainerProxy(
     case Event(job: Run, data: WarmedData) =>
       implicit val transid = job.msg.transid
       initializeAndRun(data.container, job)
-        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, Instant.now))
+        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, job.action.exec.kind, job.action.limits.memory.megabytes.MB, Instant.now))
         .pipeTo(self)
 
       goto(Running)
@@ -255,7 +257,7 @@ class ContainerProxy(
             self ! job
         }
         .flatMap(_ => initializeAndRun(data.container, job))
-        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, Instant.now))
+        .map(_ => WarmedData(data.container, job.msg.user.namespace, job.action, job.action.exec.kind, job.action.limits.memory.megabytes.MB, Instant.now))
         .pipeTo(self)
 
       goto(Running)
@@ -335,7 +337,7 @@ class ContainerProxy(
 
     // Only initialize iff we haven't yet warmed the container
     val initialize = stateData match {
-      case data: WarmedData => Future.successful(None)
+      case data: WarmedData => container.initialize(job.action.containerInitializer, actionTimeout).map(Some(_))
       case _                => container.initialize(job.action.containerInitializer, actionTimeout).map(Some(_))
     }
 
@@ -414,7 +416,7 @@ object ContainerProxy {
     collectLogs: (TransactionId, Identity, WhiskActivation, Container, ExecutableWhiskAction) => Future[ActivationLogs],
     instance: InstanceId,
     unusedTimeout: FiniteDuration = 10.minutes,
-    pauseGrace: FiniteDuration = 50.milliseconds) =
+    pauseGrace: FiniteDuration = 10.minutes) =
     Props(new ContainerProxy(factory, ack, store, collectLogs, instance, unusedTimeout, pauseGrace))
 
   // Needs to be thread-safe as it's used by multiple proxies concurrently.

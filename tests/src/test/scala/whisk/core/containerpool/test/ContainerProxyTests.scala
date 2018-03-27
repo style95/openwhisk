@@ -138,7 +138,7 @@ class ContainerProxyTests
   def expectWarmed(namespace: String, action: ExecutableWhiskAction) = {
     val test = EntityName(namespace)
     expectMsgPF() {
-      case NeedWork(WarmedData(_, `test`, `action`, _)) => true
+      case NeedWork(WarmedData(_, `test`, `action`, _, _, _)) => true
     }
   }
 

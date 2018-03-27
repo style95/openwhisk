@@ -102,7 +102,7 @@ class ContainerPoolTests
   def warmedData(action: ExecutableWhiskAction = action,
                  namespace: String = "invocationSpace",
                  lastUsed: Instant = Instant.now) =
-    WarmedData(stub[Container], EntityName(namespace), action, lastUsed)
+    WarmedData(stub[Container], EntityName(namespace), action, action.exec.kind, action.limits.memory.megabytes.MB, lastUsed)
 
   /** Creates a sequence of containers and a factory returning this sequence. */
   def testContainers(n: Int) = {
@@ -332,7 +332,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
   def warmedData(action: ExecutableWhiskAction = createAction(),
                  namespace: String = standardNamespace.asString,
                  lastUsed: Instant = Instant.now) =
-    WarmedData(stub[Container], EntityName(namespace), action, lastUsed)
+    WarmedData(stub[Container], EntityName(namespace), action, action.exec.kind, action.limits.memory.megabytes.MB, lastUsed)
 
   /** Helper to create PreWarmedData with sensible defaults */
   def preWarmedData(kind: String = "anyKind") = PreWarmedData(stub[Container], kind, 256.MB)
