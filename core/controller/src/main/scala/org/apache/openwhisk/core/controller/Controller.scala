@@ -20,6 +20,7 @@ package org.apache.openwhisk.core.controller
 import akka.Done
 import akka.actor.{ActorSystem, CoordinatedShutdown}
 import akka.event.Logging.InfoLevel
+import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.Uri
@@ -43,7 +44,7 @@ import spray.json.DefaultJsonProtocol._
 import spray.json._
 import pureconfig.generic.auto._
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
@@ -163,6 +164,9 @@ class Controller(val instance: ControllerInstanceId,
           else
             complete(InternalServerError -> JsObject("unhealthy" -> s"${all - healthy}/$all".toJson))
         }
+      } ~ path("disable") {
+        Controller.shutdown()
+        complete(OK)
       }
     }
   }
@@ -234,6 +238,7 @@ object Controller {
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    implicit val executionContext = actorSystem.dispatcher
     ConfigMXBean.register()
     Kamon.init()
 
@@ -282,10 +287,30 @@ object Controller {
         val httpsConfig =
           if (Controller.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.controller.https")) else None
 
-        BasicHttpService.startHttpService(controller.route, port, httpsConfig, interface)(actorSystem)
+        val binding = BasicHttpService.startHttpService(controller.route, port, httpsConfig, interface)(actorSystem)
+        bindingOp = Some(binding)
+        actorSystemOp = Some(actorSystem)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")
+    }
+  }
+
+  var bindingOp: Option[Future[Http.ServerBinding]] = None
+  var actorSystemOp: Option[ActorSystem] = None
+
+  def shutdown(): Unit = {
+    for {
+      binding <- bindingOp
+      actorSystem <- actorSystemOp
+    } yield {
+      implicit val ec = actorSystem.dispatcher
+      Await
+        .result(binding, 10.seconds)
+        .terminate(hardDeadline = 3.seconds)
+        .flatMap { _ =>
+          actorSystem.terminate()
+        }
     }
   }
 }

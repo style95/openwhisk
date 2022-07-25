@@ -170,7 +170,7 @@ object BasicHttpService {
    */
   def startHttpService(route: Route, port: Int, config: Option[HttpsConfig] = None, interface: String = "0.0.0.0")(
     implicit
-    actorSystem: ActorSystem): Unit = {
+    actorSystem: ActorSystem): Future[Http.ServerBinding] = {
     val httpsContext = config.map(Https.connectionContextServer(_))
     var httpBindingBuilder: ServerBuilder = Http().newServerAt(interface, port)
     if (httpsContext.isDefined) {
@@ -178,7 +178,10 @@ object BasicHttpService {
     }
     val httpBinding = httpBindingBuilder.bindFlow(route)
     addShutdownHook(httpBinding)
+    httpBinding
   }
+
+  def shutdown(): Unit = {}
 
   def addShutdownHook(binding: Future[Http.ServerBinding])(implicit actorSystem: ActorSystem): Unit = {
     implicit val executionContext = actorSystem.dispatcher
